@@ -1,71 +1,19 @@
-<!doctype html>
-<html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Hand Motion FX</title>
-<style>
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#050308;color:#fff;font-family:Arial,sans-serif}body{padding:12px}.app{max-width:980px;margin:auto;background:#08060c;border:1px solid #38214b;border-radius:22px;overflow:hidden;box-shadow:0 0 35px #6d16a522}.head{padding:14px 16px;display:flex;justify-content:space-between;gap:10px;align-items:center;background:#0c0911;border-bottom:1px solid #24172e}.title{font-size:20px;font-weight:800}.status{font-size:12px;color:#aaa}.stage{position:relative;background:#000;aspect-ratio:16/9;overflow:hidden}.stage video{display:none}.stage canvas{width:100%;height:100%;display:block}.badge,.mode{position:absolute;top:12px;padding:8px 11px;border-radius:999px;background:#0b0710dd;border:1px solid #6c2ab5;font-size:12px}.badge{left:12px}.mode{right:12px}.controls{padding:12px;display:flex;gap:8px;flex-wrap:wrap}.controls button{min-height:44px;border:1px solid #4b2860;background:#17101e;color:#eee;border-radius:12px;padding:10px 14px;font-weight:700}.controls button.active,.controls button.main{background:#8b28ed;border-color:#bd63ff}.controls button:disabled{opacity:.45}.info{padding:0 14px 15px;color:#a29aa9;font-size:12px;line-height:1.5}.secure{display:none;margin:0 14px 14px;padding:10px 12px;border:1px solid #563b68;border-radius:12px;background:#120d17;color:#ddd;font-size:12px}.secure.show{display:block}.green{color:#76ff9a}
-</style>
-</head>
-<body>
-<div class="app">
-<div class="head"><div class="title">✨ Hand Motion FX</div><div id="status" class="status">Belum aktif</div></div>
-<div class="stage"><video id="video" playsinline muted></video><canvas id="canvas"></canvas><div class="badge">📷 <span id="cam">Kamera mati</span></div><div class="mode" id="mode">🫶 Love</div></div>
-<div class="controls">
-<button id="start" class="main">📷 Mulai Kamera</button><button id="stop" disabled>Stop</button>
-<button data-m="love" class="style active">🫶 Love</button><button data-m="circle" class="style">👌 Bulat</button><button data-m="fist" class="style">✊ Kepal</button><button data-m="chaos" class="style">🖐️ Ancur</button>
-</div>
-<div id="secure" class="secure">⚠️ Kamera browser membutuhkan <b>HTTPS</b> atau <b>localhost</b>. Kalau file ini dibuka langsung dari File Manager, upload ke GitHub Pages/hosting HTTPS dulu.</div>
-<div class="info">Gerakkan tangan di depan kamera. Efek mengikuti posisi telapak/tangan secara realtime. Untuk Love, dua tangan akan membentuk love besar bila keduanya terlihat.</div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script>
-(function(){
-'use strict';
-const video=document.getElementById('video'), canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
-const start=document.getElementById('start'),stop=document.getElementById('stop'),status=document.getElementById('status'),cam=document.getElementById('cam'),modeEl=document.getElementById('mode'),secure=document.getElementById('secure');
-let handsModel=null,stream=null,running=false,mode='love',particles=[],tracked=[],lastCenter=null,lastTime=0,frame=0;
-const names={love:'🫶 Love',circle:'👌 Bulat',fist:'✊ Kepal',chaos:'🖐️ Ancur'};
-function resize(){const r=canvas.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d))}window.addEventListener('resize',resize);resize();
-function setMode(m){mode=m;modeEl.textContent=names[m];document.querySelectorAll('.style').forEach(b=>b.classList.toggle('active',b.dataset.m===m))}
-document.querySelectorAll('.style').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.m)));
-function addParticle(x,y,type){const a=Math.random()*Math.PI*2,s=.6+Math.random()*3.8;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-.5,life:1,size:1+Math.random()*3,type});if(particles.length>650)particles.splice(0,particles.length-650)}
-function burst(x,y,n,type){for(let i=0;i<n;i++)addParticle(x,y,type)}
-function drawHeart(x,y,s,a){ctx.save();ctx.translate(x,y);ctx.scale(s,s);ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(0,18);ctx.bezierCurveTo(-42,-8,-31,-38,0,-16);ctx.bezierCurveTo(31,-38,42,-8,0,18);ctx.strokeStyle='#ff4bdc';ctx.lineWidth=5;ctx.shadowBlur=16;ctx.shadowColor='#ff28cf';ctx.stroke();ctx.restore()}
-function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#020204';ctx.fillRect(0,0,w,h);
-for(let i=0;i<90;i++){ctx.fillStyle='rgba(190,70,255,.07)';ctx.fillRect((i*97)%w,(i*47)%h,1,1)}
-if(tracked.length){
- const centers=tracked.map(hand=>{let pts=hand.landmarks;let sx=0,sy=0;for(const p of pts){sx+=1-p.x;sy+=p.y}return{x:sx/pts.length*w,y:sy/pts.length*h}});
- let cx=centers.reduce((s,p)=>s+p.x,0)/centers.length,cy=centers.reduce((s,p)=>s+p.y,0)/centers.length;
- if(!lastCenter)lastCenter={x:cx,y:cy};const speed=Math.hypot(cx-lastCenter.x,cy-lastCenter.y);lastCenter={x:cx,y:cy};
- if(speed>2)burst(cx,cy,mode==='chaos'?8:3,mode);
- if(mode==='love'){
-   if(centers.length>=2){let a=centers[0],b=centers[1],mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dist=Math.hypot(a.x-b.x,a.y-b.y);drawHeart(mx,my,Math.max(.8,Math.min(2.8,dist/150)),1);burst(mx,my,5,'love')}
-   else drawHeart(cx,cy,1.8,1);
- }
- if(mode==='circle'){let r=70+Math.min(90,speed*7);ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle='#b83dff';ctx.lineWidth=7;ctx.shadowBlur=25;ctx.shadowColor='#9a20ff';ctx.stroke();ctx.restore()}
- if(mode==='fist'){ctx.save();ctx.beginPath();ctx.arc(cx,cy,82,0,Math.PI*2);ctx.strokeStyle='#ff4bdc';ctx.lineWidth=5;ctx.shadowBlur=18;ctx.shadowColor='#ff2bd0';ctx.stroke();for(let i=0;i<12;i++){let a=i*Math.PI*2/12;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*92,cy+Math.sin(a)*92);ctx.lineTo(cx+Math.cos(a)*135,cy+Math.sin(a)*135);ctx.stroke()}ctx.restore()}
- if(mode==='chaos'){for(let i=0;i<35;i++){let a=Math.random()*Math.PI*2,r=30+Math.random()*170;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);ctx.strokeStyle='rgba(212,61,255,.22)';ctx.stroke()}}
-}
-for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vx*=.985;p.vy*=.985;p.vy+=.025;p.life-=.016;if(p.type==='love')drawHeart(p.x,p.y,p.size*.11,Math.max(0,p.life));else{ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fillStyle='rgba(220,85,255,'+Math.max(0,p.life)+')';ctx.fill()}}
-particles=particles.filter(p=>p.life>0);}
-function onResults(res){tracked=(res.multiHandLandmarks||[]).map(landmarks=>({landmarks}));}
-async function startCamera(){
- start.disabled=true;
- if(!window.isSecureContext && location.hostname!=='localhost' && location.protocol!=='file:'){secure.classList.add('show')}
- if(location.protocol==='file:'){secure.classList.add('show')}
- try{
-  if(!window.Hands){throw new Error('MediaPipe gagal dimuat. Periksa internet.');}
-  if(!handsModel){handsModel=new Hands({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands/'+f});handsModel.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.55,minTrackingConfidence:.55});handsModel.onResults(onResults)}
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Browser tidak menyediakan kamera.');
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});
-  video.srcObject=stream;await video.play();running=true;stop.disabled=false;cam.textContent='Kamera aktif';status.innerHTML='<span class="green">● Kamera aktif</span>';lastTime=0;loop();
- }catch(e){console.error(e);status.textContent=e.name==='NotAllowedError'?'Izin kamera ditolak':e.message;start.disabled=false;}
-}
-function stopCamera(){running=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;tracked=[];stop.disabled=true;start.disabled=false;cam.textContent='Kamera mati';status.textContent='Kamera berhenti'}
-async function loop(t){if(!running)return;requestAnimationFrame(loop);if(video.readyState>=2&&t-lastTime>30){lastTime=t;try{await handsModel.send({image:video})}catch(e){console.error(e)}}draw()}
-start.addEventListener('click',startCamera);stop.addEventListener('click',stopCamera);setInterval(()=>{if(running)draw()},33);draw();
-})();
-</script>
-</body></html>
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEON HAND FX</title><style>*{box-sizing:border-box}body{margin:0;background:#030207;color:#fff;font-family:Arial;overflow:hidden}.top{height:54px;padding:0 14px;display:flex;justify-content:space-between;align-items:center;background:#08050d;border-bottom:1px solid #35124d}.brand{font-weight:800}.brand b{color:#d84cff}.status{font-size:11px;color:#777}.live{color:#55ff9b}.wrap{height:calc(100vh - 54px);display:flex;align-items:center;justify-content:center;padding:12px}.box{width:min(1400px,100%);position:relative}.screen{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#000;border:1px solid #9a2cff;border-radius:20px;box-shadow:0 0 35px #6c10a833}.screen video{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:brightness(.65) saturate(.85)}canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tag{position:absolute;top:12px;padding:8px 11px;border:1px solid #9229d6;border-radius:20px;background:#08040dcc;font-size:10px}.left{left:12px}.right{right:12px}.msg{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);width:90%;text-align:center;font-size:11px;text-shadow:0 1px 10px #000}.buttons{text-align:center;padding:10px;display:flex;gap:7px;justify-content:center;flex-wrap:wrap}button{border:1px solid #51236d;background:#160d1d;color:#fff;border-radius:11px;padding:10px 13px;font-weight:bold}button.main{background:#9227e8}button:disabled{opacity:.45}.help{text-align:center;color:#888;font-size:9px}@media(min-width:900px){.screen{transform:perspective(1400px) rotateY(-1deg) rotateX(.7deg)}}
+</style></head><body><header class="top"><div class="brand">✦ <b>NEON</b> HAND FX</div><div id="status" class="status">● Kamera belum aktif</div></header><main class="wrap"><div class="box"><div class="screen"><video id="video" playsinline muted></video><canvas id="fx"></canvas><div class="tag left">✦ SERBUK NEON</div><div class="tag right" id="mode">Menunggu tangan…</div><div class="msg">Gerakkan telapak tangan. Tangan tidak digambar — hanya serbuk neon yang membentuk efek.</div></div><div class="buttons"><button id="start" class="main">📷 Mulai Kamera</button><button id="stop" disabled>Stop</button><button id="reset">↻ Reset</button></div><div class="help">🫰 Love • 👌 Bulat • ✊ Kepal • 🖐️ Ancur — dipilih otomatis dari gerakan tangan</div></div></main>
+<script type="module">
+const v=document.getElementById('video'),c=document.getElementById('fx'),x=c.getContext('2d'),st=document.getElementById('status'),md=document.getElementById('mode');let ai,stream,run=false,raf,last=-1,ps=[],mode='none',stable=0,W,H;
+function size(){let r=c.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);W=c.width=r.width*d;H=c.height=r.height*d}addEventListener('resize',size);size();
+const R=(a,b)=>a+Math.random()*(b-a),D=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function dust(n=700){ps=[];for(let i=0;i<n;i++)ps.push({x:R(0,W),y:R(0,H),vx:R(-.2,.2),vy:R(-.2,.2),l:R(.2,1),s:R(.5,2.5)})}dust();
+function metric(h){let p=D(h[0],h[9])||.01,t=[8,12,16,20].map(i=>D(h[0],h[i])/p);return{open:t.filter(z=>z>1.45).length,pinch:D(h[4],h[8])/p,mid:t[1]>1.45,ring:t[2]>1.45,pink:t[3]>1.45}}
+function classify(h){if(!h.length)return'none';let m=metric(h[0]);if(m.pinch<.72&&!m.mid&&!m.ring&&!m.pink)return'love';if(m.pinch<.68&&(m.mid||m.ring||m.pink))return'circle';if(m.open<=1)return'fist';return'chaos'}
+function center(h){let a=h.reduce((q,p)=>({x:q.x+1-p.x,y:q.y+p.y}),{x:0,y:0});return{x:a.x/h.length*W,y:a.y/h.length*H}}
+function shape(cx,cy,m,s){let a=[];if(m==='love')for(let i=0;i<240;i++){let t=i/240*Math.PI*2,X=16*Math.sin(t)**3,Y=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));a.push({x:cx+X*s/16,y:cy+Y*s/16})}else if(m==='circle')for(let i=0;i<250;i++){let t=i/250*Math.PI*2;a.push({x:cx+Math.cos(t)*s,y:cy+Math.sin(t)*s})}else if(m==='fist')for(let i=0;i<220;i++){let t=i/220*Math.PI*2,r=s*(.55+.25*Math.sin(5*t)**2);a.push({x:cx+Math.cos(t)*r,y:cy+Math.sin(t)*r})}else for(let i=0;i<300;i++){let t=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*s;a.push({x:cx+Math.cos(t)*r,y:cy+Math.sin(t)*r});}return a}
+function add(x0,y0,n=10){for(let i=0;i<n;i++){let a=Math.random()*6.283,s=R(.2,4);ps.push({x:x0+R(-10,10),y:y0+R(-10,10),vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,s:R(.7,3)})}if(ps.length>1500)ps.splice(0,ps.length-1500)}
+function render(h){x.clearRect(0,0,W,H);x.fillStyle='rgba(0,0,8,.08)';x.fillRect(0,0,W,H);let cx=W/2,cy=H/2;if(h.length){let q=center(h[0]);cx=q.x;cy=q.y;add(cx,cy,12)}let targets=h.length?shape(cx,cy,mode,Math.min(W,H)*.18):[];for(let p of ps){p.x+=p.vx;p.y+=p.vy;p.l-=.005;if(targets.length){let t=targets[(Math.random()*targets.length)|0];p.vx+=(t.x-p.x)*.001;p.vy+=(t.y-p.y)*.001}p.vx*=.994;p.vy*=.994;x.fillStyle='rgba(220,75,255,'+(p.l*.72)+')';x.fillRect(p.x,p.y,p.s,p.s)}ps=ps.filter(p=>p.l>0);if(h.length){x.shadowBlur=18;x.shadowColor='#d22cff';x.strokeStyle='rgba(225,70,255,.35)';x.lineWidth=2;if(mode==='circle'){x.beginPath();x.arc(cx,cy,Math.min(W,H)*.18,0,6.283);x.stroke()}if(mode==='love'){x.font='bold '+Math.min(W,H)*.08+'px Arial';x.textAlign='center';x.fillStyle='rgba(255,70,220,.45)';x.fillText('♥',cx,cy)}x.shadowBlur=0}}
+async function load(){let{HandLandmarker,FilesetResolver}=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm');let f=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');ai=await HandLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2})}
+async function start(){document.getElementById('start').disabled=true;st.textContent='Memuat AI tangan…';try{if(!ai)await load();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});v.srcObject=stream;await v.play();run=true;document.getElementById('stop').disabled=false;st.innerHTML='<span class="live">● Kamera aktif</span>';loop()}catch(e){st.textContent='Kamera gagal: '+e.name;document.getElementById('start').disabled=false}}
+function stop(){run=false;cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;v.srcObject=null;document.getElementById('start').disabled=false;document.getElementById('stop').disabled=true;st.textContent='● Kamera berhenti'}
+function loop(){if(!run)return;raf=requestAnimationFrame(loop);let h=[];if(v.readyState>=2&&v.currentTime!==last){last=v.currentTime;let r=ai.detectForVideo(v,performance.now());h=r.landmarks||[];let m=classify(h);if(m===mode)stable++;else stable=0;if(stable>5||mode==='none'){mode=m;md.textContent={none:'Menunggu tangan…',love:'🫰 LOVE',circle:'👌 BULAT',fist:'✊ KEPAL',chaos:'🖐️ ANCUR'}[m]}}render(h)}
+document.getElementById('start').onclick=start;document.getElementById('stop').onclick=stop;document.getElementById('reset').onclick=dust;render([]);
+</script></body></html>
