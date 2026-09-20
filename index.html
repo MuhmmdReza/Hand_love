@@ -1,19 +1,478 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEON HAND FX</title><style>*{box-sizing:border-box}body{margin:0;background:#030207;color:#fff;font-family:Arial;overflow:hidden}.top{height:54px;padding:0 14px;display:flex;justify-content:space-between;align-items:center;background:#08050d;border-bottom:1px solid #35124d}.brand{font-weight:800}.brand b{color:#d84cff}.status{font-size:11px;color:#777}.live{color:#55ff9b}.wrap{height:calc(100vh - 54px);display:flex;align-items:center;justify-content:center;padding:12px}.box{width:min(1400px,100%);position:relative}.screen{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#000;border:1px solid #9a2cff;border-radius:20px;box-shadow:0 0 35px #6c10a833}.screen video{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:brightness(.65) saturate(.85)}canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tag{position:absolute;top:12px;padding:8px 11px;border:1px solid #9229d6;border-radius:20px;background:#08040dcc;font-size:10px}.left{left:12px}.right{right:12px}.msg{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);width:90%;text-align:center;font-size:11px;text-shadow:0 1px 10px #000}.buttons{text-align:center;padding:10px;display:flex;gap:7px;justify-content:center;flex-wrap:wrap}button{border:1px solid #51236d;background:#160d1d;color:#fff;border-radius:11px;padding:10px 13px;font-weight:bold}button.main{background:#9227e8}button:disabled{opacity:.45}.help{text-align:center;color:#888;font-size:9px}@media(min-width:900px){.screen{transform:perspective(1400px) rotateY(-1deg) rotateX(.7deg)}}
-</style></head><body><header class="top"><div class="brand">✦ <b>NEON</b> HAND FX</div><div id="status" class="status">● Kamera belum aktif</div></header><main class="wrap"><div class="box"><div class="screen"><video id="video" playsinline muted></video><canvas id="fx"></canvas><div class="tag left">✦ SERBUK NEON</div><div class="tag right" id="mode">Menunggu tangan…</div><div class="msg">Gerakkan telapak tangan. Tangan tidak digambar — hanya serbuk neon yang membentuk efek.</div></div><div class="buttons"><button id="start" class="main">📷 Mulai Kamera</button><button id="stop" disabled>Stop</button><button id="reset">↻ Reset</button></div><div class="help">🫰 Love • 👌 Bulat • ✊ Kepal • 🖐️ Ancur — dipilih otomatis dari gerakan tangan</div></div></main>
-<script type="module">
-const v=document.getElementById('video'),c=document.getElementById('fx'),x=c.getContext('2d'),st=document.getElementById('status'),md=document.getElementById('mode');let ai,stream,run=false,raf,last=-1,ps=[],mode='none',stable=0,W,H;
-function size(){let r=c.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);W=c.width=r.width*d;H=c.height=r.height*d}addEventListener('resize',size);size();
-const R=(a,b)=>a+Math.random()*(b-a),D=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-function dust(n=700){ps=[];for(let i=0;i<n;i++)ps.push({x:R(0,W),y:R(0,H),vx:R(-.2,.2),vy:R(-.2,.2),l:R(.2,1),s:R(.5,2.5)})}dust();
-function metric(h){let p=D(h[0],h[9])||.01,t=[8,12,16,20].map(i=>D(h[0],h[i])/p);return{open:t.filter(z=>z>1.45).length,pinch:D(h[4],h[8])/p,mid:t[1]>1.45,ring:t[2]>1.45,pink:t[3]>1.45}}
-function classify(h){if(!h.length)return'none';let m=metric(h[0]);if(m.pinch<.72&&!m.mid&&!m.ring&&!m.pink)return'love';if(m.pinch<.68&&(m.mid||m.ring||m.pink))return'circle';if(m.open<=1)return'fist';return'chaos'}
-function center(h){let a=h.reduce((q,p)=>({x:q.x+1-p.x,y:q.y+p.y}),{x:0,y:0});return{x:a.x/h.length*W,y:a.y/h.length*H}}
-function shape(cx,cy,m,s){let a=[];if(m==='love')for(let i=0;i<240;i++){let t=i/240*Math.PI*2,X=16*Math.sin(t)**3,Y=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));a.push({x:cx+X*s/16,y:cy+Y*s/16})}else if(m==='circle')for(let i=0;i<250;i++){let t=i/250*Math.PI*2;a.push({x:cx+Math.cos(t)*s,y:cy+Math.sin(t)*s})}else if(m==='fist')for(let i=0;i<220;i++){let t=i/220*Math.PI*2,r=s*(.55+.25*Math.sin(5*t)**2);a.push({x:cx+Math.cos(t)*r,y:cy+Math.sin(t)*r})}else for(let i=0;i<300;i++){let t=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*s;a.push({x:cx+Math.cos(t)*r,y:cy+Math.sin(t)*r});}return a}
-function add(x0,y0,n=10){for(let i=0;i<n;i++){let a=Math.random()*6.283,s=R(.2,4);ps.push({x:x0+R(-10,10),y:y0+R(-10,10),vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,s:R(.7,3)})}if(ps.length>1500)ps.splice(0,ps.length-1500)}
-function render(h){x.clearRect(0,0,W,H);x.fillStyle='rgba(0,0,8,.08)';x.fillRect(0,0,W,H);let cx=W/2,cy=H/2;if(h.length){let q=center(h[0]);cx=q.x;cy=q.y;add(cx,cy,12)}let targets=h.length?shape(cx,cy,mode,Math.min(W,H)*.18):[];for(let p of ps){p.x+=p.vx;p.y+=p.vy;p.l-=.005;if(targets.length){let t=targets[(Math.random()*targets.length)|0];p.vx+=(t.x-p.x)*.001;p.vy+=(t.y-p.y)*.001}p.vx*=.994;p.vy*=.994;x.fillStyle='rgba(220,75,255,'+(p.l*.72)+')';x.fillRect(p.x,p.y,p.s,p.s)}ps=ps.filter(p=>p.l>0);if(h.length){x.shadowBlur=18;x.shadowColor='#d22cff';x.strokeStyle='rgba(225,70,255,.35)';x.lineWidth=2;if(mode==='circle'){x.beginPath();x.arc(cx,cy,Math.min(W,H)*.18,0,6.283);x.stroke()}if(mode==='love'){x.font='bold '+Math.min(W,H)*.08+'px Arial';x.textAlign='center';x.fillStyle='rgba(255,70,220,.45)';x.fillText('♥',cx,cy)}x.shadowBlur=0}}
-async function load(){let{HandLandmarker,FilesetResolver}=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm');let f=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');ai=await HandLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2})}
-async function start(){document.getElementById('start').disabled=true;st.textContent='Memuat AI tangan…';try{if(!ai)await load();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});v.srcObject=stream;await v.play();run=true;document.getElementById('stop').disabled=false;st.innerHTML='<span class="live">● Kamera aktif</span>';loop()}catch(e){st.textContent='Kamera gagal: '+e.name;document.getElementById('start').disabled=false}}
-function stop(){run=false;cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;v.srcObject=null;document.getElementById('start').disabled=false;document.getElementById('stop').disabled=true;st.textContent='● Kamera berhenti'}
-function loop(){if(!run)return;raf=requestAnimationFrame(loop);let h=[];if(v.readyState>=2&&v.currentTime!==last){last=v.currentTime;let r=ai.detectForVideo(v,performance.now());h=r.landmarks||[];let m=classify(h);if(m===mode)stable++;else stable=0;if(stable>5||mode==='none'){mode=m;md.textContent={none:'Menunggu tangan…',love:'🫰 LOVE',circle:'👌 BULAT',fist:'✊ KEPAL',chaos:'🖐️ ANCUR'}[m]}}render(h)}
-document.getElementById('start').onclick=start;document.getElementById('stop').onclick=stop;document.getElementById('reset').onclick=dust;render([]);
-</script></body></html>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Neon Hand Galaxy</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    html, body { background: #000; overflow: hidden; height: 100%; width: 100%; color: #fff; user-select: none; }
+    #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+    .ui { position: absolute; z-index: 10; pointer-events: none; }
+    .top-left { top: 16px; left: 16px; }
+    .title {
+      font-size: 18px; font-weight: 700; letter-spacing: 1px;
+      background: linear-gradient(90deg, #00f0ff, #ff00ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .title .infinity { font-size: 24px; color: #00f0ff; -webkit-text-fill-color: #00f0ff; }
+    .subtitle { font-size: 11px; color: #00f0ff; margin-top: 2px; opacity: 0.8; }
+
+    .status-box {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(0,12,25,0.8); border: 1px solid #00f0ff;
+      border-radius: 10px; padding: 7px 12px; font-size: 12px; color: #00ff9d;
+      display: flex; align-items: center; gap: 6px; backdrop-filter: blur(6px);
+    }
+    .status-dot {
+      width: 7px; height: 7px; background: #00ff9d; border-radius: 50%;
+      box-shadow: 0 0 6px #00ff9d; animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .gesture-name {
+      position: absolute; top: 55px; right: 16px;
+      background: rgba(0,12,25,0.85); border: 1px solid #ff2d95;
+      border-radius: 8px; padding: 5px 12px; font-size: 12px; color: #ff9de0;
+      display: none; backdrop-filter: blur(6px);
+    }
+
+    #camera-container {
+      position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+      width: 200px; height: 150px; border-radius: 12px; overflow: hidden;
+      border: 2px solid #00f0ff; box-shadow: 0 0 16px rgba(0,240,255,0.4);
+      z-index: 20; background: #000;
+    }
+    #video { width: 100%; height: 100%; object-fit: cover; }
+    #camera-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+    .bottom-bar {
+      position: absolute; bottom: 0; left: 0; width: 100%; height: 90px;
+      background: linear-gradient(to top, rgba(0,0,0,0.92), transparent);
+      display: flex; justify-content: center; align-items: center; gap: 32px; z-index: 30;
+    }
+    .btn {
+      width: 54px; height: 54px; border-radius: 50%; border: 2.5px solid;
+      background: transparent; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: 0.2s; position: relative;
+    }
+    .btn-camera { border-color: #00f0ff; color: #00f0ff; }
+    .btn-camera:hover { background: rgba(0,240,255,0.15); box-shadow: 0 0 16px #00f0ff; }
+    .btn-stop { border-color: #ff2d95; color: #ff2d95; }
+    .btn-stop:hover { background: rgba(255,45,149,0.15); box-shadow: 0 0 16px #ff2d95; }
+    .btn-fs { border-color: #c4f; color: #e0f; }
+    .btn-fs:hover { background: rgba(180,0,255,0.15); box-shadow: 0 0 16px #c4f; }
+    .btn span { position: absolute; bottom: -18px; font-size: 10px; font-weight: 600; }
+
+    .hint { position: absolute; bottom: 14px; left: 14px; font-size: 11px; color: #888; }
+    .hint-right { position: absolute; bottom: 14px; right: 14px; font-size: 11px; color: #888; }
+
+    .loading {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      color: #00f0ff; font-size: 15px; z-index: 100; text-align: center; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    Klik <b>CAMERA</b> lalu <b>FULLSCREEN</b><br>
+    <small style="opacity:0.7">Transisi sangat smooth</small>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <div class="ui top-left">
+    <div class="title"><span class="infinity">∞</span> NEON HAND GALAXY</div>
+    <div class="subtitle">HAND GESTURE • 3D NEON PARTICLE</div>
+  </div>
+
+  <div class="status-box">
+    <div class="status-dot"></div>
+    <span id="statusText">Menunggu kamera...</span>
+  </div>
+
+  <div class="gesture-name" id="gestureName">—</div>
+
+  <div id="camera-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="camera-overlay"></canvas>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="hint">Neon galaxy particles</div>
+
+    <button class="btn btn-camera" id="btnCamera">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <span>CAMERA</span>
+    </button>
+
+    <button class="btn btn-stop" id="btnStop">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+      <span>STOP</span>
+    </button>
+
+    <button class="btn btn-fs" id="btnFullscreen">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+      </svg>
+      <span>FULLSCREEN</span>
+    </button>
+
+    <div class="hint-right">Gesture mode</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('video');
+    const camOverlay = document.getElementById('camera-overlay');
+    const camCtx = camOverlay.getContext('2d');
+    const loading = document.getElementById('loading');
+    const statusText = document.getElementById('statusText');
+    const gestureNameEl = document.getElementById('gestureName');
+
+    let W, H, particles = [], isRunning = false, camera = null;
+    let currentGesture = 'none';
+    let gestureStable = 'none';
+    let gestureCounter = 0;
+    const STABLE_FRAMES = 5;
+
+    let centerX, centerY;
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      camOverlay.width = 200;
+      camOverlay.height = 150;
+      centerX = W / 2;
+      centerY = H / 2 - 30;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ===================== PARTICLE - SANGAT SMOOTH =====================
+    class Particle {
+      constructor() {
+        this.x = centerX;
+        this.y = centerY;
+        this.vx = 0;
+        this.vy = 0;
+        this.size = 0.45 + Math.random() * 1.1;
+        this.hue = 250 + Math.random() * 110;
+        this.target = { x: centerX, y: centerY };
+        this.angle = Math.random() * Math.PI * 2;
+        this.orbitSpeed = 0.005 + Math.random() * 0.01;
+        this.orbitRadius = 0.12 + Math.random() * 0.4;
+      }
+
+      update() {
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - this.y;
+
+        // === SANGAT PELAN & SMOOTH ===
+        this.vx += dx * 0.009;   // semakin kecil = semakin pelan
+        this.vy += dy * 0.009;
+
+        this.vx *= 0.94;         // damping tinggi
+        this.vy *= 0.94;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // micro orbit biar tetap hidup
+        this.angle += this.orbitSpeed;
+        this.x += Math.cos(this.angle) * this.orbitRadius;
+        this.y += Math.sin(this.angle) * this.orbitRadius * 0.65;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, 68%, 0.9)`;
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.7)`;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    function initParticles(n = 1100) {
+      particles = [];
+      for (let i = 0; i < n; i++) particles.push(new Particle());
+    }
+
+    // ===================== SHAPES =====================
+    function makeBall(cx, cy, r = 95) {
+      const pts = [];
+      for (let i = 0; i < 1100; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const b = Math.acos(2 * Math.random() - 1);
+        const radius = r * (0.7 + Math.random() * 0.3);
+        pts.push({
+          x: cx + radius * Math.sin(b) * Math.cos(a),
+          y: cy + radius * Math.sin(b) * Math.sin(a) * 0.78
+        });
+      }
+      return pts;
+    }
+
+    function makeDonut(cx, cy, R = 100, r = 32) {
+      const pts = [];
+      for (let i = 0; i < 1100; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI * 2;
+        const rad = R + r * Math.cos(phi) * (0.85 + Math.random() * 0.15);
+        pts.push({
+          x: cx + rad * Math.cos(theta),
+          y: cy + rad * Math.sin(theta) * 0.7
+        });
+      }
+      return pts;
+    }
+
+    function makeHeart(cx, cy, s = 1.35) {
+      const pts = [];
+      for (let i = 0; i < 1100; i++) {
+        const t = Math.random() * Math.PI * 2;
+        let x = 16 * Math.pow(Math.sin(t), 3);
+        let y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+        x += (Math.random() - 0.5) * 1.8;
+        y += (Math.random() - 0.5) * 1.8;
+        pts.push({ x: cx + x * s * 3.1, y: cy + y * s * 3.1 });
+      }
+      return pts;
+    }
+
+    function makeScatter(cx, cy) {
+      const pts = [];
+      for (let i = 0; i < 1100; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 30 + Math.random() * 280;
+        pts.push({
+          x: cx + Math.cos(a) * r,
+          y: cy + Math.sin(a) * r * 0.65
+        });
+      }
+      return pts;
+    }
+
+    function makeLetterN(cx, cy, s = 78) {
+      const pts = [];
+      for (let i = 0; i < 280; i++) {
+        pts.push({ x: cx - s + (Math.random()-0.5)*6, y: cy - s + (i/280)*s*2 + (Math.random()-0.5)*4 });
+      }
+      for (let i = 0; i < 320; i++) {
+        pts.push({ x: cx - s + (i/320)*s*2 + (Math.random()-0.5)*5, y: cy - s + (i/320)*s*2 + (Math.random()-0.5)*5 });
+      }
+      for (let i = 0; i < 280; i++) {
+        pts.push({ x: cx + s + (Math.random()-0.5)*6, y: cy - s + (i/280)*s*2 + (Math.random()-0.5)*4 });
+      }
+      return pts;
+    }
+
+    function makeLetterR(cx, cy, s = 78) {
+      const pts = [];
+      for (let i = 0; i < 300; i++) {
+        pts.push({ x: cx - s + (Math.random()-0.5)*5, y: cy - s + (i/300)*s*2 + (Math.random()-0.5)*4 });
+      }
+      for (let i = 0; i < 220; i++) {
+        const a = (i/220) * Math.PI;
+        pts.push({
+          x: cx - s + Math.sin(a)*s*1.2 + (Math.random()-0.5)*4,
+          y: cy - s + (1 - Math.cos(a))*s*0.75 + (Math.random()-0.5)*4
+        });
+      }
+      for (let i = 0; i < 240; i++) {
+        pts.push({ x: cx - s + (i/240)*s*1.6 + (Math.random()-0.5)*5, y: cy + (i/240)*s*0.95 + (Math.random()-0.5)*4 });
+      }
+      return pts;
+    }
+
+    function applyShape(type) {
+      let pts;
+      if (type === 'ball') pts = makeBall(centerX, centerY);
+      else if (type === 'donut') pts = makeDonut(centerX, centerY);
+      else if (type === 'heart') pts = makeHeart(centerX, centerY);
+      else if (type === 'scatter') pts = makeScatter(centerX, centerY);
+      else if (type === 'N') pts = makeLetterN(centerX, centerY);
+      else if (type === 'R') pts = makeLetterR(centerX, centerY);
+      else pts = makeBall(centerX, centerY, 60);
+
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].target = pts[i % pts.length];
+      }
+    }
+
+    // ===================== GESTURE =====================
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function isExtended(landmarks, tip, pip, mcp) {
+      const tipToMcp = distance(landmarks[tip], landmarks[mcp]);
+      const pipToMcp = distance(landmarks[pip], landmarks[mcp]);
+      return tipToMcp > pipToMcp * 1.18;
+    }
+
+    function detectGesture(landmarks, handedness) {
+      const isRight = handedness === 'Right';
+
+      const thumbExt = isRight
+        ? landmarks[4].x < landmarks[3].x - 0.025
+        : landmarks[4].x > landmarks[3].x + 0.025;
+
+      const indexExt  = isExtended(landmarks, 8, 6, 5);
+      const middleExt = isExtended(landmarks, 12, 10, 9);
+      const ringExt   = isExtended(landmarks, 16, 14, 13);
+      const pinkyExt  = isExtended(landmarks, 20, 18, 17);
+
+      const extCount = [indexExt, middleExt, ringExt, pinkyExt].filter(Boolean).length;
+      const thumbIndexDist = distance(landmarks[4], landmarks[8]);
+
+      if (!indexExt && !middleExt && !ringExt && !pinkyExt) return 'ball';
+      if (extCount >= 4) return 'scatter';
+      if (indexExt && !middleExt && !ringExt && !pinkyExt && thumbIndexDist < 0.06) return 'donut';
+      if (indexExt && !middleExt && !ringExt && !pinkyExt && !thumbExt) return 'heart'; // ☝️
+      if (thumbExt && pinkyExt && !indexExt && !middleExt && !ringExt) return 'R';
+      if (extCount >= 3) return 'scatter';
+      return 'ball';
+    }
+
+    // ===================== MEDIAPIPE =====================
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.72,
+      minTrackingConfidence: 0.65
+    });
+
+    hands.onResults(onResults);
+
+    function onResults(results) {
+      camCtx.save();
+      camCtx.clearRect(0, 0, camOverlay.width, camOverlay.height);
+      camCtx.drawImage(results.image, 0, 0, camOverlay.width, camOverlay.height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const lm = results.multiHandLandmarks[0];
+        const handedness = results.multiHandedness[0].label;
+
+        drawConnectors(camCtx, lm, HAND_CONNECTIONS, { color: '#00f0ff', lineWidth: 1.5 });
+        drawLandmarks(camCtx, lm, { color: '#ff2d95', lineWidth: 1, radius: 2.2 });
+
+        const rawGesture = detectGesture(lm, handedness);
+
+        if (rawGesture === currentGesture) {
+          gestureCounter++;
+        } else {
+          gestureCounter = 0;
+          currentGesture = rawGesture;
+        }
+
+        if (gestureCounter >= STABLE_FRAMES && gestureStable !== currentGesture) {
+          gestureStable = currentGesture;
+          applyShape(gestureStable);
+
+          const names = {
+            ball: 'BOLA',
+            donut: 'DONAT',
+            heart: 'LOVE',
+            scatter: 'HANCUR',
+            N: 'HURUF N',
+            R: 'HURUF R'
+          };
+          gestureNameEl.style.display = 'block';
+          gestureNameEl.textContent = names[gestureStable] || gestureStable;
+        }
+
+        statusText.textContent = 'HAND DETECTED';
+      } else {
+        currentGesture = 'none';
+        gestureCounter = 0;
+        gestureNameEl.style.display = 'none';
+        statusText.textContent = 'Mencari tangan...';
+      }
+      camCtx.restore();
+    }
+
+    // ===================== ANIMATE =====================
+    function animate() {
+      ctx.fillStyle = 'rgba(0, 0, 4, 0.18)';
+      ctx.fillRect(0, 0, W, H);
+
+      for (const p of particles) {
+        p.update();
+        p.draw();
+      }
+      requestAnimationFrame(animate);
+    }
+
+    // ===================== CONTROLS =====================
+    document.getElementById('btnCamera').onclick = async () => {
+      if (isRunning) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: 640, height: 480 }
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        camera = new Camera(video, {
+          onFrame: async () => await hands.send({ image: video }),
+          width: 640,
+          height: 480
+        });
+        camera.start();
+        isRunning = true;
+        loading.style.display = 'none';
+        initParticles(1100);
+        applyShape('ball');
+        statusText.textContent = 'Kamera aktif';
+      } catch (e) {
+        alert('Izinkan akses kamera');
+      }
+    };
+
+    document.getElementById('btnStop').onclick = () => {
+      if (camera) { camera.stop(); camera = null; }
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+      }
+      isRunning = false;
+      particles = [];
+      gestureStable = 'none';
+      gestureNameEl.style.display = 'none';
+      statusText.textContent = 'Stopped';
+      loading.style.display = 'block';
+      loading.innerHTML = 'Kamera dimatikan<br><small>Klik CAMERA untuk mulai</small>';
+    };
+
+    document.getElementById('btnFullscreen').onclick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    };
+
+    initParticles(800);
+    applyShape('ball');
+    animate();
+  </script>
+</body>
+</html>
